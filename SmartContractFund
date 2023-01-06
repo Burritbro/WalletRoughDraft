@@ -1,0 +1,104 @@
+//SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.15;
+
+
+
+contract Wallet {
+    address private owner;
+    uint constant MINSIGNATURES = 3;
+    uint8 public amountSigs;
+    address[] gaurds;
+    
+    struct accessors { // mapped to an address, these are set by owner
+        uint allowances;
+        bool isGaurdian;
+    }
+
+    
+
+    mapping(address => accessors) usersMap; // map for people allowed to interact with Wallet
+    mapping(address => uint8) private signers;
+
+    constructor(){
+        owner = msg.sender;
+    } // owner is the initializer, at time of initizalization
+
+    modifier onlyOwner() {
+        require(owner == msg.sender, "Only owner can call contract");
+        _;
+    } // modifier for functions that can only be called by owner.
+
+
+    receive() external payable{}
+
+    fallback() external payable{}
+
+
+    function getBalance() public view returns(uint){
+        return address(this).balance;
+    }
+    //list of gaurdians
+    function getGaurdians() public view returns(address[] memory){
+        return gaurds;
+    }
+
+    function ownerTransferFunds(address payable _to, uint _amount, bytes memory _payload) public returns(bytes memory){  // spend money as owner.
+        if(msg.sender == owner){
+            _to.transfer(_amount);
+        }
+       (bool success, bytes memory dataReturn) = _to.call{value: _amount}(_payload);
+       require(success);
+       return dataReturn;
+        
+    }
+
+    function setAccessors(address _accessor, uint _allowance, bool gaurdian) public onlyOwner {
+        accessors memory contractFriend = accessors(_allowance, gaurdian);
+        usersMap[_accessor] = contractFriend;
+        if(usersMap[_accessor].isGaurdian == true){
+            if(gaurds.length < 5){
+                gaurds.push(_accessor); // need throw an error message (functionality works but doesn't tell you when gaurd list is full
+            } else{
+                usersMap[_accessor].isGaurdian = false; // list of gaurdians needs to match the struct bool in usersMap
+            }
+            
+        } 
+    }
+
+
+
+    function withdrawFunds(address payable _account, uint amount) public {
+        if(usersMap[_account].allowances > 0){
+            if(amount <= usersMap[_account].allowances){
+                _account.transfer(amount);
+            } else{
+                revert("Surpassed set allowance");
+            }
+            
+        } else{
+            revert("Invalid Address");
+        }
+    }
+
+    function signToTransfer(address _account, address newOwner) public {
+        if(usersMap[_account].isGaurdian == true){
+            if(signers[_account] == 0){
+                if(amountSigs < 3){
+                    signers[_account] = 1;
+                    amountSigs++;
+                } else if(amountSigs >= 3){
+                    require(newOwner != address(0));
+                    owner = newOwner;
+                    amountSigs = 0;
+
+                }
+                
+            }
+        }
+
+    }
+
+
+
+}
